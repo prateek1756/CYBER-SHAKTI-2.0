@@ -1,0 +1,10 @@
+flask
+flask-cors
+tensorflow
+mediapipe
+numpy
+pandas
+scikit-learn
+joblib
+networkx
+

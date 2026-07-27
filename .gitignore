@@ -1,0 +1,51 @@
+# ========================
+# Environment & Secrets
+# ========================
+.env
+.env.local
+.env.*.local
+
+# ========================
+# Node / JS
+# ========================
+node_modules/
+dist/
+build/
+.pnpm-store/
+*.tsbuildinfo
+
+# ========================
+# Python
+# ========================
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# ========================
+# ML Model Binaries
+# ========================
+python/*.h5
+python/*.pkl
+
+# ========================
+# OS & Editor
+# ========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ========================
+# Logs
+# ========================
+*.log
+logs/
+
+# ========================
+# Embedded / Temp repos
+# ========================
+Mule_Trace_temp/
