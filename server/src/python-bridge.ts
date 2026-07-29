@@ -68,7 +68,7 @@ export class PythonBridge {
         this.process = null;
       });
 
-      const statsUrl = `http://${config.flask.host}:${config.flask.port}/api/deepfake/stats`;
+      const statsUrl = `http://${config.flask.host}:${config.flask.port}/health`;
       this.isReady = await this.pollHealthCheck(statsUrl);
 
       if (this.isReady) {

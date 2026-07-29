@@ -1,6 +1,10 @@
 import os
 import sys
 import random
+
+# Silence TensorFlow's verbose oneDNN/CPU-feature log spam
+os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '2')
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import joblib
@@ -93,6 +97,12 @@ def load_call_model():
         except Exception as e:
             print(f"Error loading call model: {e}")
     return call_model
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Lightweight liveness probe used by the Node.js python-bridge health-check."""
+    return jsonify({"status": "ok", "service": "cybershakti-flask", "port": PORT}), 200
 
 
 @app.route('/api/deepfake/stats', methods=['GET'])
