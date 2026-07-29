@@ -11,14 +11,14 @@ CyberShakti/
 ├── client/          React + Vite + TailwindCSS frontend
 ├── server/          Express.js + TypeScript API gateway
 ├── python/          Flask microservice with ML models
-├── database/        MySQL schema + stored procedures
+├── database/        Supabase SQL migration
 └── data/            Training data (git-ignored, local only)
 ```
 
 **Data flow:**
 ```
 Browser → Express (port 8080) → Flask AI server (port 5001)
-                             ↘ MySQL (port 3306)
+                             ↘ Supabase (PostgreSQL)
 ```
 
 The Express server acts as a proxy/gateway. If the Flask microservice is unavailable, all endpoints automatically fall back to built-in JS heuristics so the app remains functional.
@@ -34,7 +34,7 @@ The Express server acts as a proxy/gateway. If the Flask microservice is unavail
 | **Scam Call Analyser** | Random Forest on call metadata |
 | **Deepfake Detector** | TensorFlow CNN (`deepfake_model.h5`) |
 | **Mule Account Scanner** | Graph forensics (NetworkX — smurfing, cycles, shell chains) |
-| **Scam Map** | Geo-tagged community scam reports (MySQL / in-memory) |
+| **Scam Map** | Geo-tagged community scam reports (Supabase / in-memory) |
 
 ---
 
@@ -45,7 +45,7 @@ The Express server acts as a proxy/gateway. If the Flask microservice is unavail
 | Node.js | 20 LTS | |
 | pnpm | 8+ | `npm i -g pnpm` |
 | Python | 3.11 | **3.11 required** — mediapipe has no wheels for 3.12+ |
-| MySQL | 8.0 | Optional — app runs without it |
+| Supabase account | — | Optional — app runs without it (in-memory fallback) |
 
 ---
 
@@ -63,8 +63,10 @@ pnpm install
 
 ```bash
 cp .env.example .env
-# Edit .env with your DB credentials
+# Edit .env with your Supabase credentials
 ```
+
+> Get your `SUPABASE_URL` and `SUPABASE_ANON_KEY` from your [Supabase project settings](https://supabase.com/dashboard) → Settings → API.
 
 ### 3. Set up Python virtual environment
 
@@ -117,11 +119,8 @@ pnpm dev
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `8080` | Express server port |
-| `DB_HOST` | `localhost` | MySQL host |
-| `DB_PORT` | `3306` | MySQL port |
-| `DB_USER` | — | MySQL username |
-| `DB_PASSWORD` | — | MySQL password |
-| `DB_NAME` | `cybershakti` | Database name (auto-created) |
+| `SUPABASE_URL` | — | Supabase project URL |
+| `SUPABASE_ANON_KEY` | — | Supabase anon/public key |
 | `FLASK_HOST` | `127.0.0.1` | Flask server host |
 | `FLASK_PORT` | `5001` | Flask server port |
 | `FLASK_HEALTH_MAX_RETRIES` | `20` | Health-check retry limit |
@@ -167,7 +166,7 @@ POST /api/scams              body: { title, description, latitude, longitude }
 
 ## Database
 
-MySQL is optional. On first connection the server auto-creates the `cybershakti` database and runs `database/schema.sql`. If MySQL is unreachable the app operates on in-memory mock data.
+Supabase (PostgreSQL) is optional. Run `database/supabase_migration.sql` once in your Supabase project's SQL Editor to create the `scam_reports` table with RLS policies. If Supabase credentials are absent the app operates on in-memory mock data.
 
 ---
 
@@ -185,9 +184,9 @@ pnpm typecheck    # TypeScript type-check (no emit)
 ## Tech Stack
 
 **Frontend:** React 18, Vite, TailwindCSS, Framer Motion, Leaflet, vis-network  
-**Backend:** Node.js, Express, TypeScript, mysql2  
+**Backend:** Node.js, Express, TypeScript, @supabase/supabase-js  
 **AI Microservice:** Python 3.11, Flask, TensorFlow 2.21, scikit-learn 1.9, MediaPipe, NetworkX, pandas  
-**Database:** MySQL 8
+**Database:** Supabase (PostgreSQL)
 
 ---
 

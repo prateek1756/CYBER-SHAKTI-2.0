@@ -12,13 +12,10 @@ export const config = {
   port: process.env.PORT || '8080',
   nodeEnv: process.env.NODE_ENV || 'development',
   
-  // Database Configs
-  db: {
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '3306', 10),
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'cybershakti'
+  // Supabase
+  supabase: {
+    url: process.env.SUPABASE_URL || '',
+    anonKey: process.env.SUPABASE_ANON_KEY || ''
   },
   
   // Flask Configs
