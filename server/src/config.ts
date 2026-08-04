@@ -11,6 +11,9 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 export const config = {
   port: process.env.PORT || '8080',
   nodeEnv: process.env.NODE_ENV || 'development',
+  allowedOrigins: (process.env.ALLOWED_ORIGIN || 'http://localhost:5173,http://localhost:3000')
+    .split(',')
+    .map(o => o.trim()),
   
   // Supabase
   supabase: {

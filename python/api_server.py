@@ -1,6 +1,21 @@
 import os
 import sys
 import random
+import io
+import hashlib
+
+# When spawned as a subprocess by Node.js there is no real console handle.
+# Replace stdout/stderr with line-buffered versions to prevent OSError: Windows error 6
+# from colorama/click trying to write to an invalid console handle.
+if sys.stdout is None or not hasattr(sys.stdout, 'fileno'):
+    sys.stdout = open(os.devnull, 'w')
+if sys.stderr is None or not hasattr(sys.stderr, 'fileno'):
+    sys.stderr = open(os.devnull, 'w')
+try:
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore
+    sys.stderr.reconfigure(line_buffering=True)  # type: ignore
+except Exception:
+    pass
 
 # Silence TensorFlow's verbose oneDNN/CPU-feature log spam
 os.environ.setdefault('TF_ENABLE_ONEDNN_OPTS', '0')
@@ -35,6 +50,7 @@ app = Flask(__name__)
 CORS(app)
 
 PORT = int(os.environ.get('FLASK_PORT', 5001))
+HOST = os.environ.get('FLASK_HOST', '127.0.0.1')
 
 # Paths to models
 MODEL_DIR = os.path.dirname(__file__)
@@ -123,34 +139,99 @@ def stats():
 def detect():
     if 'file' not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
-    
+
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "Empty filename"}), 400
 
     trained_model = load_deepfake_model()
-    face_detected = True
-    
-    # Read file bytes for a pseudo-random seed to make results consistent for the same file
+    face_detected = False
+    score = None
+    face_bbox = None
+    detection_method = "none"
+
     try:
+        from PIL import Image
+        import numpy as np
+
         file_bytes = file.read()
-        file.seek(0)
-        file_sum = sum(file_bytes)
-        random.seed(file_sum)
-        score = float(random.uniform(0.05, 0.95))
+        img_pil = Image.open(io.BytesIO(file_bytes)).convert('RGB')
+        img_w, img_h = img_pil.size
+
+        # --- Stage 1: MediaPipe Face Detection (Industry Standard) ---
+        # Detects face bounding boxes with confidence scoring.
+        # We crop to the face ROI so the model analyses biometrics, not background.
+        face_crop = None
+        if MEDIAPIPE_AVAILABLE:
+            try:
+                import mediapipe as mp
+                mp_face = mp.solutions.face_detection
+                img_rgb = np.array(img_pil)
+                with mp_face.FaceDetection(model_selection=1, min_detection_confidence=0.4) as face_detector:
+                    results = face_detector.process(img_rgb)
+                    if results.detections:
+                        face_detected = True
+                        # Use the highest-confidence detection
+                        det = max(results.detections, key=lambda d: d.score[0])
+                        bb = det.location_data.relative_bounding_box
+                        # Add 20% padding around the face for context (ears, hair, neck)
+                        pad_x = bb.width * 0.20
+                        pad_y = bb.height * 0.20
+                        x1 = max(0.0, bb.xmin - pad_x)
+                        y1 = max(0.0, bb.ymin - pad_y)
+                        x2 = min(1.0, bb.xmin + bb.width + pad_x)
+                        y2 = min(1.0, bb.ymin + bb.height + pad_y)
+                        # Convert normalised coords to pixels
+                        x1p, y1p = int(x1 * img_w), int(y1 * img_h)
+                        x2p, y2p = int(x2 * img_w), int(y2 * img_h)
+                        face_bbox = {"x": x1p, "y": y1p, "w": x2p - x1p, "h": y2p - y1p}
+                        face_crop = img_pil.crop((x1p, y1p, x2p, y2p))
+                    else:
+                        face_detected = False
+            except Exception as mp_err:
+                print(f"[Deepfake] MediaPipe face detection error: {mp_err}")
+                face_detected = False
+        else:
+            # MediaPipe not available — treat whole frame as the region of interest
+            face_detected = True
+            face_crop = img_pil
+
+        # --- Stage 2: MobileNetV2 Deepfake Inference ---
+        if trained_model is not None and (face_detected or not MEDIAPIPE_AVAILABLE):
+            roi = face_crop if face_crop else img_pil
+            roi_resized = roi.resize((224, 224), Image.LANCZOS)
+            arr = np.expand_dims(np.array(roi_resized, dtype=np.float32) / 255.0, axis=0)
+            raw_pred = float(trained_model.predict(arr, verbose=0)[0][0])
+            score = raw_pred
+            detection_method = "model+mediapipe" if MEDIAPIPE_AVAILABLE else "model_only"
+
+        # --- Stage 3: Heuristic Fallback (no model loaded or no face found) ---
+        if score is None:
+            # Deterministic hash-based fallback — same image always gets same score
+            file_hash = int(hashlib.sha256(file_bytes).hexdigest(), 16)
+            score = (file_hash % 10000) / 10000.0 * 0.5 + 0.25  # range 0.25–0.75
+            detection_method = "heuristic_fallback"
+
     except Exception as e:
-        print(f"Byte read error: {e}")
-        score = float(random.uniform(0.1, 0.9))
+        print(f"[Deepfake] Inference error: {e}")
+        # Last-resort fallback
+        file_bytes = file_bytes if 'file_bytes' in dir() else b''
+        file_hash = int(hashlib.sha256(file_bytes).hexdigest(), 16) if file_bytes else 0
+        score = (file_hash % 10000) / 10000.0 * 0.5 + 0.25
+        detection_method = "error_fallback"
 
     is_fake = score > 0.5
     confidence = score if is_fake else (1.0 - score)
+    using_fallback = trained_model is None or detection_method in ("heuristic_fallback", "error_fallback")
 
     response = {
         "face_detected": face_detected,
         "is_fake": is_fake,
-        "confidence_score": confidence,
-        "raw_score": score,
-        "using_fallback_heuristics": trained_model is None,
+        "confidence_score": round(confidence, 4),
+        "raw_score": round(score, 4),
+        "face_bbox": face_bbox,
+        "detection_method": detection_method,
+        "using_fallback_heuristics": using_fallback,
         "message": "Analysis completed successfully."
     }
     return jsonify(response), 200
@@ -177,7 +258,7 @@ def phishing_detect():
             X_vec = vec.transform([url])
             prob = clf.predict_proba(X_vec)[0][1]
             score = float(prob * 100)
-            is_phishing = prob > 0.5
+            is_phishing = bool(prob > 0.5)
             
             reasons = []
             if is_phishing:
@@ -211,7 +292,7 @@ def phishing_detect():
     return jsonify({
         "url": url,
         "risk_score": score,
-        "is_phishing": score >= 50,
+        "is_phishing": bool(score >= 50),
         "status": "dangerous" if score >= 60 else ("suspicious" if score >= 30 else "safe"),
         "reasons": reasons,
         "using_fallback_heuristics": True
@@ -580,10 +661,10 @@ def mule_ai_analyze(account_id):
             { "type": "Temporal", "detail": temporal_detail }
         ] + behavioral_flags,
         "recommendation": "IMMEDIATE FREEZE. High-velocity aggregator profile detected." if in_degree > 10 else "MONITOR. Potential shell entity in fund-routing chain.",
-        "prediction_confidence": 0.85 + (0.10 * (min(1.0, (in_degree + out_degree) / 20)))
+        "topology_risk_score": round(min(1.0, (in_degree + out_degree) / 20), 2)
     })
 
 
 if __name__ == '__main__':
-    print(f"Flask API server starting on port {PORT}...")
-    app.run(host='0.0.0.0', port=PORT)
+    print(f"Flask API server starting on {HOST}:{PORT}...")
+    app.run(host=HOST, port=PORT)

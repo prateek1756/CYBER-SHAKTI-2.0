@@ -1,6 +1,14 @@
 import { Router } from 'express';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+// Persists to <workspace-root>/data/scam_reports_local.json
+const LOCAL_STORE = path.resolve(__dirname, '../../../data/scam_reports_local.json');
 
 const router = Router();
 let supabase: SupabaseClient | null = null;
@@ -31,6 +39,27 @@ const mockScams: ScamReport[] = [
   { id: 2, title: "Electricity Bill Fraud Call", description: "Received call from an unknown number threatening to disconnect electricity within 2 hours if payment is not made via APK link.", latitude: 19.0760, longitude: 72.8777, status: 'verified', created_at: new Date().toISOString() },
   { id: 3, title: "Part-time Job Offer Telegram Scam", description: "Scammers offering Rs 5000/day for liking YouTube videos. They eventually ask to deposit money in a crypto wallet.", latitude: 12.9716, longitude: 77.5946, status: 'verified', created_at: new Date().toISOString() }
 ];
+
+function loadLocalScams(): ScamReport[] {
+  try {
+    if (!fs.existsSync(LOCAL_STORE)) return [...mockScams];
+    const raw = fs.readFileSync(LOCAL_STORE, 'utf-8');
+    const parsed: ScamReport[] = JSON.parse(raw);
+    return parsed.length > 0 ? parsed : [...mockScams];
+  } catch {
+    return [...mockScams];
+  }
+}
+
+function saveLocalScams(scams: ScamReport[]): void {
+  try {
+    const dir = path.dirname(LOCAL_STORE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(LOCAL_STORE, JSON.stringify(scams, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('[LocalStore] Failed to persist scam reports:', e);
+  }
+}
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -65,15 +94,17 @@ router.get('/', async (req, res) => {
     }
   }
 
+  // Serve from local JSON store as offline fallback
+  const localScams = loadLocalScams();
   if (lat !== null && lng !== null) {
     return res.json(
-      mockScams.filter(s => s.status === 'verified')
+      localScams.filter(s => s.status === 'verified')
         .map(s => ({ ...s, distance: haversineDistance(lat, lng, s.latitude, s.longitude) }))
         .filter(s => s.distance <= radius)
         .sort((a, b) => a.distance - b.distance)
     );
   }
-  return res.json(mockScams.filter(s => s.status === 'verified'));
+  return res.json(localScams.filter(s => s.status === 'verified'));
 });
 
 router.post('/', async (req, res) => {
@@ -85,17 +116,30 @@ router.post('/', async (req, res) => {
   const db = getSupabase();
   if (db) {
     try {
-      const { data, error } = await db.from('scam_reports').insert([{ title, description, latitude: parseFloat(latitude), longitude: parseFloat(longitude), status: 'verified' }]).select('id').single();
+      const { data, error } = await db.from('scam_reports').insert([{ title, description, latitude: parseFloat(latitude), longitude: parseFloat(longitude), status: 'pending' }]).select('id').single();
       if (error) throw error;
-      return res.status(201).json({ message: 'Scam report submitted successfully', id: (data as any).id });
+      return res.status(201).json({ message: 'Scam report submitted and pending review. It will appear on the map once verified by our team.', id: (data as any).id });
     } catch (err: any) {
       console.error('[Database Error] Supabase insert failed:', err.message);
     }
   }
 
-  const newScam: ScamReport = { id: mockScams.length + 1, title, description, latitude: parseFloat(latitude), longitude: parseFloat(longitude), status: 'verified', created_at: new Date().toISOString() };
-  mockScams.unshift(newScam);
-  return res.status(201).json({ message: 'Scam report submitted successfully (Saved in-memory mock)', id: newScam.id });
+  // Persist to local JSON file when Supabase is unavailable
+  const localScams = loadLocalScams();
+  const newScam: ScamReport = {
+    id: localScams.reduce((max, s) => Math.max(max, s.id), 0) + 1,
+    title, description,
+    latitude: parseFloat(latitude),
+    longitude: parseFloat(longitude),
+    status: 'pending',
+    created_at: new Date().toISOString()
+  };
+  localScams.unshift(newScam);
+  saveLocalScams(localScams);
+  return res.status(201).json({
+    message: 'Report received and pending review. It will appear on the map once verified. (Saved locally — configure Supabase for cloud persistence.)',
+    id: newScam.id
+  });
 });
 
 export default router;

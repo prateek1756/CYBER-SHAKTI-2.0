@@ -14,28 +14,58 @@ export class PythonBridge {
   public async start(): Promise<boolean> {
     console.log('[Python Bridge] Starting Flask AI server...');
 
-    const pythonDir = path.resolve(__dirname, '../../../python');
+    const pythonDir = path.resolve(__dirname, '../../python');
+    console.log(`[Python Bridge] Python directory resolved to: ${pythonDir}`);
     
-    let pythonCmd = 'python';
+    const fs = await import('fs');
+    const { execSync } = await import('child_process');
+    let pythonCmd: string | null = null;
     const isWin = process.platform === 'win32';
 
+    // 1. Check for venv inside the python directory (highest priority)
     const venvPaths = [
-      path.join(pythonDir, 'venv', isWin ? 'Scripts/python.exe' : 'bin/python'),
-      path.join(pythonDir, '.venv', isWin ? 'Scripts/python.exe' : 'bin/python')
+      path.join(pythonDir, 'venv', isWin ? 'Scripts\\python.exe' : 'bin/python'),
+      path.join(pythonDir, '.venv', isWin ? 'Scripts\\python.exe' : 'bin/python')
     ];
 
     for (const venvPath of venvPaths) {
-      const fs = await import('fs');
       if (fs.existsSync(venvPath)) {
         pythonCmd = venvPath;
-        console.log(`[Python Bridge] Using Python virtual environment: ${pythonCmd}`);
+        console.log(`[Python Bridge] Using venv Python: ${pythonCmd}`);
         break;
       }
     }
 
-    if (pythonCmd === 'python') {
-      console.log(`[Python Bridge] Virtual environment not found. Falling back to global '${isWin ? 'python' : 'python3'}'`);
-      pythonCmd = isWin ? 'python' : 'python3';
+    // 2. Check PYTHON_CMD env var (allows manual override)
+    if (!pythonCmd && process.env.PYTHON_CMD) {
+      pythonCmd = process.env.PYTHON_CMD;
+      console.log(`[Python Bridge] Using PYTHON_CMD env override: ${pythonCmd}`);
+    }
+
+    // 3. On Windows, resolve candidate names to absolute paths via 'where' command
+    // Never pass bare names to spawn — they fail if PATH isn't inherited
+    if (!pythonCmd) {
+      const candidates = isWin ? ['python', 'python3', 'py'] : ['python3', 'python'];
+      for (const candidate of candidates) {
+        try {
+          const whereCmd = isWin ? `where ${candidate}` : `which ${candidate}`;
+          const result = execSync(whereCmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+          // 'where' returns one path per line — take the first
+          const firstPath = result.split('\n')[0].trim();
+          if (firstPath && fs.existsSync(firstPath)) {
+            pythonCmd = firstPath;
+            console.log(`[Python Bridge] Resolved Python to absolute path: ${pythonCmd}`);
+            break;
+          }
+        } catch {
+          // candidate not found, try next
+        }
+      }
+    }
+
+    if (!pythonCmd) {
+      console.error('[Python Bridge] Could not find any Python executable. Set PYTHON_CMD env var to the full path of your python.exe');
+      return false;
     }
 
     try {

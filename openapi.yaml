@@ -1,0 +1,258 @@
+openapi: 3.0.3
+info:
+  title: CyberShakti 2.0 API Specification
+  description: >
+    Comprehensive REST API specification for CyberShakti 2.0 — an AI-powered national cyber defense platform
+    for detecting phishing URLs, scam SMS/messages, fraudulent calls, deepfake media, financial mule accounts,
+    and crowd-sourced scam reports.
+  version: 2.0.0
+  contact:
+    name: CyberShakti Security Engineering
+servers:
+  - url: http://localhost:8080/api
+    description: Express Proxy Gateway (Primary)
+  - url: http://localhost:5001/api
+    description: Flask Microservice (Internal ML Inference Engine)
+
+paths:
+  /health:
+    get:
+      summary: System Health Check
+      description: Returns status of Express server and mode.
+      responses:
+        '200':
+          description: Server is operational.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  mode:
+                    type: string
+                    example: development
+
+  /scanner/phishing:
+    post:
+      summary: Phishing URL Audit
+      description: Evaluates URL structure, domain age, character entropy, and machine learning models.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  example: "http://sbi-kyc-update-verify.top"
+      responses:
+        '200':
+          description: Phishing analysis complete.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  risk_score:
+                    type: number
+                    example: 85.5
+                  status:
+                    type: string
+                    enum: [safe, suspicious, dangerous]
+                  is_phishing:
+                    type: boolean
+                  reasons:
+                    type: array
+                    items:
+                      type: string
+
+  /scanner/message:
+    post:
+      summary: Fraud SMS & Message Audit
+      description: Classifies text using MultinomialNB TF-IDF NLP model for spam, phishing, and scam intent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                message:
+                  type: string
+                  example: "ALERT: Your bank account is blocked. Click http://kyc-sbi.top to update."
+      responses:
+        '200':
+          description: Message classification output.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  risk_score:
+                    type: number
+                  status:
+                    type: string
+                  is_fraud:
+                    type: boolean
+                  reasons:
+                    type: array
+                    items:
+                      type: string
+
+  /scanner/call:
+    post:
+      summary: Scam Call Metadata Audit
+      description: Analyzes phone call metadata (duration, frequency, carrier reputation, hour, international flag) using Random Forest model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - phoneNumber
+              properties:
+                phoneNumber:
+                  type: string
+                  example: "+91 98765 43210"
+                duration:
+                  type: integer
+                  example: 45
+                frequency:
+                  type: integer
+                  example: 18
+                spamReports:
+                  type: integer
+                  example: 5
+                carrierRep:
+                  type: integer
+                  example: 2
+                isIntl:
+                  type: boolean
+                  example: true
+                callHour:
+                  type: integer
+                  example: 23
+      responses:
+        '200':
+          description: Call risk assessment result.
+
+  /deepfake/detect:
+    post:
+      summary: Deepfake Media Detection
+      description: Uses MediaPipe Face Detection to locate ROI, then MobileNetV2 CNN to detect facial synthesis / manipulation.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Deepfake inference output.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  face_detected:
+                    type: boolean
+                  is_fake:
+                    type: boolean
+                  confidence_score:
+                    type: number
+                  raw_score:
+                    type: number
+                  face_bbox:
+                    type: object
+                  detection_method:
+                    type: string
+                  using_fallback_heuristics:
+                    type: boolean
+        '413':
+          description: File size exceeds 50 MB limit.
+        '415':
+          description: Unsupported file format (only images/videos allowed).
+
+  /mule/upload:
+    post:
+      summary: Financial Mule Account Graph Analysis (CSV Upload)
+      description: Processes transaction CSV to build a financial graph, run PageRank & NetworkX algorithms, and stream SSE progress.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Server-Sent Events (SSE) stream returning network graph analysis.
+        '400':
+          description: Non-CSV file uploaded.
+        '413':
+          description: File size exceeds 20 MB limit.
+
+  /scams:
+    get:
+      summary: Retrieve Verified Scam Reports
+      description: Returns verified scam reports, optionally filtered by geo-coordinates and radius.
+      parameters:
+        - in: query
+          name: lat
+          schema:
+            type: number
+        - in: query
+          name: lng
+          schema:
+            type: number
+        - in: query
+          name: radius
+          schema:
+            type: number
+            default: 10
+      responses:
+        '200':
+          description: Array of scam reports.
+    post:
+      summary: Submit New Scam Report
+      description: Submits a scam report for crowd-sourced verification. Defaults to 'pending' status.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+                - description
+                - latitude
+                - longitude
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                latitude:
+                  type: number
+                longitude:
+                  type: number
+      responses:
+        '201':
+          description: Report submitted and pending review.

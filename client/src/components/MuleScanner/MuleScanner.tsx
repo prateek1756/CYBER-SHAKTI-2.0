@@ -550,7 +550,9 @@ const MuleScannerContent: React.FC = () => {
                       <div className="text-xs font-bold text-red-400">{aiAnalysis.recommendation}</div>
                     </div>
                     <div className="mt-3 text-right">
-                      <span className="text-[8px] font-black text-slate-500 uppercase font-tech">Neural Confidence: {(aiAnalysis.prediction_confidence * 100).toFixed(1)}%</span>
+                      <span className="text-[8px] font-black text-slate-500 uppercase font-tech">
+                        Topology Risk Score: {((aiAnalysis.topology_risk_score ?? aiAnalysis.prediction_confidence ?? 0) * 100).toFixed(1)}%
+                      </span>
                     </div>
                   </div>
                 ) : (

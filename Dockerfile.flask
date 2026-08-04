@@ -1,0 +1,31 @@
+# Build & Run stage for CyberShakti Python Flask AI Microservice
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies required for OpenCV / MediaPipe / Pillow if needed
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libgl1 \
+    libglib2.0-0 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install
+COPY python/requirements.txt ./python/requirements.txt
+RUN pip install --no-cache-dir -r ./python/requirements.txt
+
+# Copy Python codebase and create data directory
+COPY python/ ./python/
+RUN mkdir -p /app/data
+
+# Train models on container startup if missing
+WORKDIR /app/python
+RUN python train_models.py || true
+
+EXPOSE 5001
+
+ENV FLASK_HOST=0.0.0.0
+ENV FLASK_PORT=5001
+
+CMD ["python", "api_server.py"]

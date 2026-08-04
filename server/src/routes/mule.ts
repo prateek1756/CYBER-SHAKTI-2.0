@@ -5,11 +5,37 @@ import FormData from 'form-data';
 import { config } from '../config.js';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB cap
+  fileFilter: (_req, file, cb) => {
+    const isCSV = file.mimetype === 'text/csv' ||
+                  file.mimetype === 'application/vnd.ms-excel' ||
+                  file.originalname.toLowerCase().endsWith('.csv');
+    if (isCSV) {
+      cb(null, true);
+    } else {
+      cb(new Error("INVALID_CSV:Uploaded file is not a CSV. Please upload a valid CSV file."));
+    }
+  }
+});
 
-router.post('/upload', upload.single('file'), async (req, res) => {
+router.post('/upload', (req, res, next) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum allowed size is 20 MB.' });
+      }
+      if (typeof err.message === 'string' && err.message.startsWith('INVALID_CSV:')) {
+        return res.status(400).json({ error: err.message.replace('INVALID_CSV:', '') });
+      }
+      return next(err);
+    }
+    next();
+  });
+}, async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded. Please upload a CSV dataset." });
+    return res.status(400).json({ error: "No file uploaded. Please upload a valid CSV dataset." });
   }
 
   const flaskUrl = `http://${config.flask.host}:${config.flask.port}/api/mule/upload`;

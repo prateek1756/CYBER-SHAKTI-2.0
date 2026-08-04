@@ -1,0 +1,29 @@
+services:
+  flask-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.flask
+    container_name: cybershakti-flask
+    environment:
+      - FLASK_HOST=0.0.0.0
+      - FLASK_PORT=5001
+    ports:
+      - "5001:5001"
+    restart: unless-stopped
+
+  express-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: cybershakti-express
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - NODE_ENV=production
+      - FLASK_HOST=flask-server
+      - FLASK_PORT=5001
+      - ALLOWED_ORIGIN=http://localhost:5173,http://localhost:8080,http://localhost:3000
+    depends_on:
+      - flask-server
+    restart: unless-stopped

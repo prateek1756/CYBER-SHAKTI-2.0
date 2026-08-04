@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.pnpm-store/
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+python/*.h5
+python/*.pkl
+data/
+.git/
+.env
+.agents/
+*.log
+Mule_Trace_temp/

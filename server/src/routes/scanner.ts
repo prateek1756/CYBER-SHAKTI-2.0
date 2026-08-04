@@ -154,7 +154,7 @@ router.post('/message', async (req, res) => {
 });
 
 router.post('/call', async (req, res) => {
-  const { phoneNumber, duration, frequency, spamReports, carrierRep, isIntl } = req.body;
+  const { phoneNumber, duration, frequency, spamReports, carrierRep, isIntl, callHour } = req.body;
   if (!phoneNumber) {
     return res.status(400).json({ error: "Missing required phoneNumber parameter." });
   }
@@ -168,7 +168,7 @@ router.post('/call', async (req, res) => {
       body: JSON.stringify({
         call_duration: duration ? parseFloat(duration) : 120,
         call_frequency: frequency ? parseFloat(frequency) : 2,
-        call_hour: new Date().getHours(),
+        call_hour: callHour !== undefined ? parseInt(callHour as string, 10) : new Date().getHours(),
         spam_reports: spamReports ? parseFloat(spamReports) : 0,
         carrier_reputation: carrierRep ? parseFloat(carrierRep) : 4,
         is_international: isIntl ? 1 : 0

@@ -50,3 +50,13 @@ logs/
 # Embedded / Temp repos
 # ========================
 Mule_Trace_temp/
+
+# ========================
+# AI Agent Skills (dev tool — not app source)
+# ========================
+.agents/
+
+# ========================
+# Offline Scam Report Store (contains PII-adjacent location data)
+# ========================
+data/scam_reports_local.json

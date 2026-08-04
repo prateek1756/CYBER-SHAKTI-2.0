@@ -27,6 +27,7 @@ export default function Scanner() {
   const [spamReports, setSpamReports] = useState('2');
   const [carrierRep, setCarrierRep] = useState('3');
   const [isIntl, setIsIntl] = useState(false);
+  const [callHour, setCallHour] = useState(String(new Date().getHours()));
   const [callResult, setCallResult] = useState<any>(null);
 
   // Helper to run diagnostic terminal logs before results
@@ -165,7 +166,8 @@ export default function Scanner() {
             frequency: parseInt(frequency, 10),
             spamReports: parseInt(spamReports, 10),
             carrierRep: parseInt(carrierRep, 10),
-            isIntl
+            isIntl,
+            callHour: parseInt(callHour, 10)
           })
         });
         const data = await res.json();
@@ -398,6 +400,19 @@ export default function Scanner() {
                         <option value="1">1 - Poor reputation/Blacklisted carrier</option>
                       </select>
                     </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5 font-tech">Call Hour (0–23, 24h)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="23"
+                        value={callHour}
+                        onChange={(e) => setCallHour(e.target.value)}
+                        disabled={isScanning}
+                        required
+                        className="w-full px-3 py-2.5 vault-input rounded-lg text-sm text-slate-200 focus:outline-none font-data"
+                      />
+                    </div>
                     <div className="flex items-center pt-6">
                       <label className="flex items-center gap-2 cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-400 font-tech">
                         <input
@@ -440,11 +455,14 @@ export default function Scanner() {
                 {scanningLogs.length === 0 && !isScanning && (
                   <p className="text-slate-600 italic">Console idle. Awaiting scan execution...</p>
                 )}
-                {scanningLogs.map((log, i) => (
-                  <p key={i} className={log.includes('[AI]') ? 'text-teal-400' : log.includes('[SYS]') ? 'text-slate-500' : 'text-slate-400'}>
-                    {log}
-                  </p>
-                ))}
+                {scanningLogs.map((log, i) => {
+                  const logStr = String(log ?? '');
+                  return (
+                    <p key={i} className={logStr.includes('[AI]') ? 'text-teal-400' : logStr.includes('[SYS]') ? 'text-slate-500' : 'text-slate-400'}>
+                      {logStr}
+                    </p>
+                  );
+                })}
                 {isScanning && (
                   <p className="text-teal-400 animate-pulse">Running analysis sweep...</p>
                 )}
@@ -459,72 +477,96 @@ export default function Scanner() {
                 {/* URL Output */}
                 {urlResult && activeTab === 'url' && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-400 font-tech">Threat Level:</span>
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border ${
-                        urlResult.status === 'safe' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
-                      }`}>
-                        {urlResult.status}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
-                      {urlResult.is_phishing 
-                        ? "Phishing pattern detected. The domain parameters indicate identity theft risk." 
-                        : "No phishing indicators detected. The link structure appears safe."}
-                    </p>
+                    {urlResult.error ? (
+                      <p className="text-[10px] text-red-400 font-sans leading-relaxed">⚠ {urlResult.error}</p>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-400 font-tech">Threat Level:</span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border ${
+                            urlResult.status === 'safe' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
+                          }`}>
+                            {urlResult.status}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
+                          {urlResult.is_phishing
+                            ? "Phishing pattern detected. The domain parameters indicate identity theft risk."
+                            : "No phishing indicators detected. The link structure appears safe."}
+                        </p>
+                      </>
+                    )}
                   </motion.div>
                 )}
 
                 {/* Message Output */}
                 {messageResult && activeTab === 'message' && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-400 font-tech">Fraud Flag:</span>
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border ${
-                        messageResult.status === 'safe' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
-                      }`}>
-                        {messageResult.status}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
-                      {messageResult.is_fraud 
-                        ? "High probability of social engineering or account hijacking keywords." 
-                        : "Normal text. Heuristics confirm standard safe vocabulary."}
-                    </p>
+                    {messageResult.error ? (
+                      <p className="text-[10px] text-red-400 font-sans leading-relaxed">⚠ {messageResult.error}</p>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-400 font-tech">Fraud Flag:</span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border ${
+                            messageResult.status === 'safe' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
+                          }`}>
+                            {messageResult.status}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
+                          {messageResult.is_fraud
+                            ? "High probability of social engineering or account hijacking keywords."
+                            : "Normal text. Heuristics confirm standard safe vocabulary."}
+                        </p>
+                      </>
+                    )}
                   </motion.div>
                 )}
 
                 {/* Deepfake Output */}
                 {deepfakeResult && activeTab === 'deepfake' && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-400 font-tech">Biometric State:</span>
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border ${
-                        deepfakeResult.is_fake ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                      }`}>
-                        {deepfakeResult.is_fake ? 'Fake' : 'Authentic'}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
-                      Confidence Level: <span className="font-bold text-white font-data">{(deepfakeResult.confidence_score * 100).toFixed(1)}%</span>
-                    </p>
+                    {deepfakeResult.error ? (
+                      <p className="text-[10px] text-red-400 font-sans leading-relaxed">⚠ {deepfakeResult.error}</p>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-400 font-tech">Biometric State:</span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border ${
+                            deepfakeResult.is_fake ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          }`}>
+                            {deepfakeResult.is_fake ? 'Fake' : 'Authentic'}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
+                          Confidence Level: <span className="font-bold text-white font-data">{(deepfakeResult.confidence_score * 100).toFixed(1)}%</span>
+                        </p>
+                      </>
+                    )}
                   </motion.div>
                 )}
 
                 {/* Scam Call Output */}
                 {callResult && activeTab === 'call' && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-400 font-tech">Call Status:</span>
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border ${
-                        callResult.status === 'safe' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.15)]'
-                      }`}>
-                        {callResult.status}
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
-                      Random Forest Scam Probability: <span className="font-bold text-white font-data">{callResult.risk_score}%</span>.
-                    </p>
+                    {callResult.error ? (
+                      <p className="text-[10px] text-red-400 font-sans leading-relaxed">⚠ {callResult.error}</p>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-400 font-tech">Call Status:</span>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-widest border ${
+                            callResult.status === 'safe' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.15)]'
+                          }`}>
+                            {callResult.status}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
+                          Random Forest Scam Probability: <span className="font-bold text-white font-data">{callResult.risk_score}%</span>.
+                        </p>
+                      </>
+                    )}
                   </motion.div>
                 )}
 

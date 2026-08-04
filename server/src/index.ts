@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import scamsRouter from './routes/scams.js';
 import scannerRouter from './routes/scanner.js';
@@ -9,7 +10,38 @@ import { PythonBridge } from './python-bridge.js';
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    if (config.allowedOrigins.includes(origin)) return callback(null, true);
+    // Silently reject — do not throw, which would crash the server
+    console.warn(`[CORS] Blocked request from origin: ${origin}`);
+    return callback(null, false);
+  },
+  methods: ['GET', 'POST']
+}));
+
+// Strict 5 req/min limiter for compute-heavy deepfake endpoint
+const deepfakeLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Deepfake analysis rate limit reached. Maximum 5 requests per minute.' }
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 60_000,      // 1 minute window
+  max: 30,               // 30 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again in a minute.' }
+});
+
+app.use('/api/deepfake', deepfakeLimiter);
+app.use('/api/scanner', apiLimiter);
+app.use('/api/mule', apiLimiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
